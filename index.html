@@ -105,6 +105,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 <main id="view"></main>
 <nav id="nav">
   <button data-act="tab" data-tab="hoje"><span>🏠</span>Hoje</button>
+  <button data-act="tab" data-tab="semana"><span>📅</span>Semana</button>
   <button data-act="tab" data-tab="treino"><span>🏋️</span>Treino</button>
   <button data-act="tab" data-tab="corrida"><span>🏃</span>Corrida</button>
   <button data-act="tab" data-tab="comida"><span>🍽️</span>Comida</button>
@@ -232,7 +233,7 @@ function spark(vals){
 }
 
 /* ================= estado de interface ================= */
-const ui = { tab:'hoje', confirm:null, draft:null, foodDate:hoje(), runEdit:null, runTipo:null, evolEx:null, showArq:false, corpoEdit:null };
+const ui = { tab:'hoje', semana:null, runDate:null,confirm:null, draft:null, foodDate:hoje(), runEdit:null, runTipo:null, evolEx:null, showArq:false, corpoEdit:null };
 function confirmTap(key){
   if(ui.confirm===key){ ui.confirm=null; return true; }
   ui.confirm=key; render();
@@ -244,8 +245,8 @@ const cBtn = (key, label, act, extra='') => `<button class="btn sm bad" data-act
 /* ================= render ================= */
 function render(){
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab));
-  const views = {hoje:vHoje, treino:vTreino, corrida:vCorrida, comida:vComida, corpo:vCorpo, config:vConfig};
-  const subs = {hoje:dataLonga(hoje()), treino:'Musculação', corrida:'Corridas', comida:'Alimentação', corpo:'Peso e medidas', config:'Configurações'};
+  const views = {hoje:vHoje, semana:vSemana, treino:vTreino, corrida:vCorrida, comida:vComida, corpo:vCorpo, config:vConfig};
+  const subs = {hoje:dataLonga(hoje()), semana:'Calendário de treinos', treino:'Musculação', corrida:'Corridas', comida:'Alimentação', corpo:'Peso e medidas', config:'Configurações'};
   $('#sub').textContent = subs[ui.tab];
   $('#view').innerHTML = (saveErr?'<div class="card warnbox">⚠️ Não consegui salvar no aparelho. Faça um backup em Configurações.</div>':'') + views[ui.tab]();
 }
@@ -278,7 +279,7 @@ function vHoje(){
   const trPlan = S.plano.filter(p=>p.ficha).length;
   const kmPlan = S.plano.filter(p=>p.corrida).length;
   const crSem = S.corridas.filter(c=>c.data>=ini&&c.data<=fim).length;
-  h += `<div class="card"><h2>Esta semana</h2><div class="stats">
+  h += `<div class="card"><div class="row between"><h2 style="margin:0">Esta semana</h2><button class="btn ghost" data-act="tab" data-tab="semana">Calendário ›</button></div><div class="stats" style="margin-top:8px">
     <div><div class="stat">${trSem}<span class="sm mute">/${trPlan}</span></div><div class="xs mute">treinos</div></div>
     <div><div class="stat">${crSem}<span class="sm mute">/${kmPlan}</span></div><div class="xs mute">corridas</div></div>
     <div><div class="stat">${fmt(kmSem)}</div><div class="xs mute">km</div></div></div>
@@ -310,6 +311,60 @@ function macroBars(t, m){
   return line('Calorias', t.kcal, m.kcal, 'var(--acc)', 'kcal') +
     `<div class="grid3">${mini('Proteína', t.p, m.p, 'var(--p)')}${mini('Carbo', t.c, m.c, 'var(--c)')}${mini('Gordura', t.g, m.g, 'var(--g)')}</div>` +
     (!num(m.kcal)?`<div class="xs mute" style="margin-top:8px">Defina suas metas em ⚙️ Configurações.</div>`:'');
+}
+
+/* ---------- SEMANA ---------- */
+function infoDia(d){
+  const pl = S.plano[dt(d).getDay()] || {};
+  const f = pl.ficha ? fichaById(pl.ficha) : null;
+  const sess = S.sessoes.filter(s=>s.data===d);
+  const runs = S.corridas.filter(c=>c.data===d);
+  return {pl, f, sess, runs, feitoF: f ? sess.some(s=>s.fichaId===f.id) : false};
+}
+function vSemana(){
+  const hj = hoje(), ini = ui.semana || inicioSemana(hj), fim = addDias(ini,6);
+  const dI = dt(ini), dF = dt(fim);
+  const rot = dI.getMonth()===dF.getMonth() ? `${dI.getDate()} a ${dF.getDate()} de ${MESES[dF.getMonth()]}` : `${dI.getDate()} ${MESES[dI.getMonth()].slice(0,3)} a ${dF.getDate()} ${MESES[dF.getMonth()].slice(0,3)}`;
+  const atual = ini===inicioSemana(hj);
+  let h = `<div class="row between" style="margin-bottom:10px"><button class="btn sm" data-act="semNav" data-n="-7" aria-label="Semana anterior">‹</button><div style="text-align:center"><b>${rot}</b><div class="xs mute">${atual?'esta semana':`<button class="btn ghost sm" data-act="semHoje">voltar para esta semana</button>`}</div></div><button class="btn sm" data-act="semNav" data-n="7" aria-label="Próxima semana">›</button></div>`;
+  let trP=0,trF=0,crP=0,crF=0,km=0;
+  const dias = [0,1,2,3,4,5,6].map(i=>{ const d = addDias(ini,i), x = infoDia(d);
+    if(x.f){ trP++; if(x.feitoF) trF++; } if(x.pl.corrida){ crP++; if(x.runs.length) crF++; }
+    km += x.runs.reduce((a,c)=>a+(c.km||0),0); return [d,x]; });
+  h += `<div class="card"><div class="stats"><div><div class="stat">${trF}<span class="sm mute">/${trP}</span></div><div class="xs mute">treinos</div></div><div><div class="stat">${crF}<span class="sm mute">/${crP}</span></div><div class="xs mute">corridas</div></div><div><div class="stat">${fmt(km)}</div><div class="xs mute">km</div></div></div></div>`;
+  dias.forEach(([d,x])=>{
+    const isH = d===hj, passado = d<hj, dd = dt(d);
+    const st = (feito) => feito ? '<span class="done">✓</span>' : (passado ? '<span class="xs mute">não feito</span>' : '');
+    let linhas = '';
+    if(x.f) linhas += `<div class="row between" style="margin-top:6px;flex-wrap:nowrap"><div class="row" style="flex-wrap:nowrap"><span class="badge">${esc(x.f.letra)}</span><span class="sm">${esc(x.f.nome)}</span></div>${st(x.feitoF)}</div>`;
+    if(x.pl.corrida) linhas += `<div class="row between" style="margin-top:6px;flex-wrap:nowrap"><div class="row" style="flex-wrap:nowrap"><span class="badge">🏃</span><span class="sm">${esc(x.pl.corrida)}${x.runs.length?` <span class="mute">· ${fmt(x.runs.reduce((a,c)=>a+(c.km||0),0),1)} km</span>`:''}</span></div>${st(x.runs.length>0)}</div>`;
+    // extras feitos fora do plano
+    x.sess.filter(s=>!x.f || s.fichaId!==x.f.id).forEach(s=>{ linhas += `<div class="row between" style="margin-top:6px"><span class="sm">🏋️ ${esc(s.fichaNome)} <span class="tag">extra</span></span><span class="done">✓</span></div>`; });
+    if(!x.pl.corrida && x.runs.length) linhas += `<div class="row between" style="margin-top:6px"><span class="sm">🏃 Corrida ${fmt(x.runs.reduce((a,c)=>a+(c.km||0),0),1)} km <span class="tag">extra</span></span><span class="done">✓</span></div>`;
+    if(!linhas) linhas = `<div class="sm mute" style="margin-top:4px">${esc(x.pl.nota||'Descanso')} 😌</div>`;
+    else if(x.pl.nota) linhas += `<div class="xs mute" style="margin-top:6px">${esc(x.pl.nota)}</div>`;
+    h += `<div class="card" data-act="diaDlg" data-d="${d}" style="cursor:pointer;${isH?'border-color:var(--acc);border-width:2px':''}"><div class="row between"><b style="text-transform:capitalize">${DIAS[dd.getDay()]} <span class="mute" style="font-weight:400">${dataCurta(d)}</span></b>${isH?'<span class="tag">hoje</span>':''}</div>${linhas}</div>`;
+  });
+  h += `<button class="btn ghost full" data-act="tab" data-tab="config">Editar plano da semana</button>`;
+  return h;
+}
+function diaDlg(d){
+  const x = infoDia(d), futuro = d>hoje();
+  let b = '';
+  if(x.f){
+    b += `<div class="card" style="background:var(--bg)"><div class="row" style="flex-wrap:nowrap"><span class="badge">${esc(x.f.letra)}</span><b>${esc(x.f.nome)}</b></div>
+      <div class="list sm" style="margin-top:8px">${x.f.exercicios.map((e,i)=>`<div class="exh">${thumb(e)}<div class="grow"><b>${i+1}. ${esc(e.nome)}</b><div class="mute">${e.series} × ${esc(e.alvo)}</div></div></div>`).join('')}</div>
+      ${x.feitoF?'<div class="done" style="margin-top:8px">✓ Treino feito</div>':(futuro||S.ativa?'':`<button class="btn pri full" style="margin-top:10px" data-act="iniciar" data-id="${x.f.id}" data-d="${d}">${d===hoje()?'Iniciar treino':'Registrar este treino'}</button>`)}</div>`;
+  }
+  if(x.pl.corrida || x.runs.length){
+    b += `<div class="card" style="background:var(--bg)"><div class="row"><span class="badge">🏃</span><b>${esc(x.pl.corrida||'Corrida')}</b></div>
+      ${x.runs.map(c=>`<div class="sm" style="margin-top:6px">✓ ${fmt(c.km,2)} km · ${fmtTempo(c.seg)} · ${pace(c.km,c.seg)}</div>`).join('')}
+      ${futuro?'':`<button class="btn ${x.runs.length?'':'pri'} full" style="margin-top:10px" data-act="runNoDia" data-d="${d}">${x.runs.length?'Registrar outra corrida':'Registrar corrida'}</button>`}</div>`;
+  }
+  if(!b) b = `<div class="sm mute">${esc(x.pl.nota||'Descanso')} 😌</div>`;
+  if(!futuro && !S.ativa){ const outras = S.fichas.filter(f=>f.ativa && (!x.f || f.id!==x.f.id));
+    if(outras.length) b += `<details style="margin-top:6px"><summary class="sm" style="color:var(--acc);cursor:pointer">Fiz outro treino neste dia</summary><div class="row" style="margin-top:8px">${outras.map(f=>`<button class="btn sm" data-act="iniciar" data-id="${f.id}" data-d="${d}">${esc(f.letra)} – ${esc(f.nome)}</button>`).join('')}</div></details>`; }
+  openDlg(DIAS[dt(d).getDay()].replace(/^./,c=>c.toUpperCase())+', '+dataCurta(d), b);
 }
 
 /* ---------- TREINO ---------- */
@@ -363,9 +418,9 @@ function vTreino(){
   h += `</div>`;
   return h;
 }
-function iniciar(fid){
-  const f = fichaById(fid); if(!f) return;
-  S.ativa = { id:uid(), fichaId:f.id, fichaNome:f.letra+' – '+f.nome, data:hoje(), inicio:new Date().toISOString(), obs:'',
+function iniciar(fid, data){
+  const f = fichaById(fid); if(!f) return; closeDlg();
+  S.ativa = { id:uid(), fichaId:f.id, fichaNome:f.letra+' – '+f.nome, data:data||hoje(), inicio:new Date().toISOString(), obs:'',
     itens: f.exercicios.map(e=>({nome:e.nome, alvo:e.alvo, tipo:e.tipo||'reps', obs:e.obs, series:Array.from({length:Math.max(1,e.series|0)},()=>({v:'',kg:'',ok:false}))})) };
   save(); ui.tab='treino'; render(); window.scrollTo(0,0);
 }
@@ -444,11 +499,11 @@ function vEditFicha(){
 /* ---------- CORRIDA ---------- */
 function vCorrida(){
   const e = ui.runEdit ? S.corridas.find(c=>c.id===ui.runEdit) : null;
-  const plHoje = S.plano[dt(hoje()).getDay()]||{};
+  const plHoje = S.plano[dt(ui.runDate||hoje()).getDay()]||{};
   const tipoDef = e ? e.tipo : (ui.runTipo || (/tiro/i.test(plHoje.corrida)?'Tiros':/long/i.test(plHoje.corrida)?'Longão':plHoje.corrida?'Leve':''));
   ui.runTipo = tipoDef;
   let h = `<div class="card"><h2>${e?'Editar corrida':'Registrar corrida'}</h2>
-    <div class="grid2"><div><label>Data</label><input type="date" id="rData" value="${e?e.data:hoje()}"></div><div><label>Distância (km)</label><input id="rKm" inputmode="decimal" placeholder="5,0" value="${e?esc(String(e.km).replace('.',',')):''}"></div></div>
+    <div class="grid2"><div><label>Data</label><input type="date" id="rData" value="${e?e.data:(ui.runDate||hoje())}"></div><div><label>Distância (km)</label><input id="rKm" inputmode="decimal" placeholder="5,0" value="${e?esc(String(e.km).replace('.',',')):''}"></div></div>
     <div class="grid2"><div><label>Tempo (h:mm:ss ou mm:ss)</label><input id="rTempo" inputmode="numeric" placeholder="32:15" value="${e?fmtTempo(e.seg):''}"></div><div><label>Pace</label><div id="rPace" class="stat" style="font-size:20px;padding-top:6px">${e?pace(e.km,e.seg):'–'}</div></div></div>
     <label>Tipo</label><div class="chips">${TIPOS_CORRIDA.map(t=>`<button class="chip ${t===tipoDef?'on':''}" data-act="runTipo" data-t="${t}">${t}</button>`).join('')}</div>
     <label>Observações</label><textarea id="rObs" placeholder="Como foi, percurso, tênis...">${e?esc(e.obs):''}</textarea>
@@ -586,9 +641,13 @@ document.addEventListener('click', e=>{
   const a = el.dataset.act, id = el.dataset.id, i = +el.dataset.i, j = +el.dataset.j;
   if(el.tagName==='SELECT') return;
   switch(a){
-    case 'tab': ui.tab = el.dataset.tab; ui.confirm=null; closeDlg(); render(); window.scrollTo(0,0); break;
+    case 'tab': ui.tab = el.dataset.tab; ui.confirm=null; ui.runDate=null; closeDlg(); render(); window.scrollTo(0,0); break;
     case 'dlgClose': closeDlg(); break;
-    case 'iniciar': if(!S.ativa) iniciar(id); break;
+    case 'iniciar': if(!S.ativa) iniciar(id, el.dataset.d); break;
+    case 'semNav': ui.semana = addDias(ui.semana || inicioSemana(hoje()), +el.dataset.n); render(); break;
+    case 'semHoje': ui.semana = null; render(); break;
+    case 'diaDlg': if(e.target.closest('.thumb')) break; diaDlg(el.dataset.d); break;
+    case 'runNoDia': ui.runDate = el.dataset.d; ui.runEdit = null; ui.runTipo = null; ui.tab = 'corrida'; closeDlg(); render(); window.scrollTo(0,0); break;
     case 'okSerie': { const s = S.ativa.itens[i].series[j]; if(!s.ok) preencherSerie(i,j); s.ok=!s.ok; save(); render(); break; }
     case 'addSerie': { const ss = S.ativa.itens[i].series; ss.push({v:'',kg:'',ok:false}); save(); render(); break; }
     case 'rmSerie': S.ativa.itens[i].series.pop(); save(); render(); break;
@@ -620,7 +679,7 @@ document.addEventListener('click', e=>{
       if(!km){ $('#rKm').focus(); return; }
       const reg = {id: ui.runEdit||uid(), data: $('#rData').value||hoje(), km, seg, tipo: ui.runTipo||'', obs: $('#rObs').value.trim()};
       S.corridas = S.corridas.filter(c=>c.id!==reg.id); S.corridas.push(reg); S.corridas.sort((x,y)=>y.data.localeCompare(x.data));
-      ui.runEdit=null; ui.runTipo=null; save(); render(); break; }
+      ui.runEdit=null; ui.runTipo=null; ui.runDate=null; save(); render(); break; }
     case 'runEdit': ui.runEdit=id; ui.runTipo=null; render(); window.scrollTo(0,0); break;
     case 'runCancel': ui.runEdit=null; ui.runTipo=null; render(); break;
     case 'runDel': if(confirmTap('delR'+ui.runEdit)){ S.corridas=S.corridas.filter(c=>c.id!==ui.runEdit); ui.runEdit=null; save(); render(); } break;
