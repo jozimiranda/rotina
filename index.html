@@ -20,10 +20,20 @@
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark){
-  :root{ --bg:#0f1312; --card:#181e1d; --ink:#e8eeec; --mute:#93a19c; --line:#2a3331;
+  :root:not([data-theme="light"]){ --bg:#0f1312; --card:#181e1d; --ink:#e8eeec; --mute:#93a19c; --line:#2a3331;
     --acc:#2dd4bf; --acc-ink:#062a26; --acc-soft:#123430; --warn:#f59e0b; --bad:#f87171;
     --p:#60a5fa; --c:#fbbf24; --g:#c084fc; --ok:#4ade80; color-scheme: dark; }
 }
+:root[data-theme="dark"]{ --bg:#0f1312; --card:#181e1d; --ink:#e8eeec; --mute:#93a19c; --line:#2a3331;
+    --acc:#2dd4bf; --acc-ink:#062a26; --acc-soft:#123430; --warn:#f59e0b; --bad:#f87171;
+    --p:#60a5fa; --c:#fbbf24; --g:#c084fc; --ok:#4ade80; color-scheme: dark; }
+.avatar{flex:none;width:40px;height:40px;border-radius:50%;overflow:hidden;border:2px solid var(--acc);background:var(--acc-soft);color:var(--acc);font-weight:700;font-size:17px;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.avatar.big{width:84px;height:84px;font-size:34px;border-width:3px}
+.card.hero{background:var(--acc);color:var(--acc-ink);border:0}
+.card.hero .mute{color:inherit;opacity:.85}
+.cor{width:38px;height:38px;border-radius:50%;border:3px solid transparent;cursor:pointer;padding:0}
+.cor.on{border-color:var(--ink);box-shadow:inset 0 0 0 2px var(--card)}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
 header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
@@ -99,7 +109,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 </head>
 <body>
 <header>
-  <h1 id="ttl">Rotina<small id="sub"></small></h1>
+  <div class="row" style="flex-wrap:nowrap;gap:10px"><button class="avatar" id="avatar" data-act="tab" data-tab="config" aria-label="Perfil"></button><h1 id="ttl">Rotina<small id="sub"></small></h1></div>
   <button class="icon" data-act="tab" data-tab="config" aria-label="Configurações">⚙️</button>
 </header>
 <main id="view"></main>
@@ -141,6 +151,14 @@ function fotosDe(e){
 }
 function fichaExDe(nome){ for(const f of S.fichas){ const e = f.exercicios.find(x=>x.nome===nome); if(e) return e; } return {nome}; }
 const thumb = (e) => { const fs = fotosDe(e); return fs.length ? `<button class="thumb" data-act="foto" data-nome="${esc(e.nome)}" aria-label="Ver foto"><img src="${esc(fs[0])}" alt="" loading="lazy"></button>` : ''; };
+function fotoQuadrada(file, cb){
+  const img = new Image(), url = URL.createObjectURL(file);
+  img.onload = () => { const lado = Math.min(img.width, img.height), sx = (img.width-lado)/2, sy = (img.height-lado)/2, m = 320;
+    const c = document.createElement('canvas'); c.width = c.height = m; c.getContext('2d').drawImage(img, sx, sy, lado, lado, 0, 0, m, m);
+    URL.revokeObjectURL(url); cb(c.toDataURL('image/jpeg', 0.8)); };
+  img.onerror = () => URL.revokeObjectURL(url);
+  img.src = url;
+}
 function comprimirFoto(file, cb){
   const img = new Image(), url = URL.createObjectURL(file);
   img.onload = () => { const m = 480, r = Math.min(1, m/Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width*r); c.height = Math.round(img.height*r); c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url); cb(c.toDataURL('image/jpeg',0.7)); };
@@ -188,6 +206,28 @@ function seed(){
 }
 function load(){ try{ const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; }catch(e){ return null; } }
 let S = load() || seed();
+const PERFIL_PADRAO = () => ({nome:'Jozi', frase:'Maratona 2027 💪', foto:null, cor:'verde', tema:'auto', provaNome:'Maratona', provaData:''});
+function migrar(){
+  S.perfil = Object.assign(PERFIL_PADRAO(), S.perfil||{});
+  S.agua = S.agua || {}; S.doce = S.doce || {};
+  if(S.metas.agua===undefined) S.metas.agua = '2000';
+  if(S.metas.copo===undefined) S.metas.copo = '250';
+}
+migrar();
+const CORES = { verde:['#0f766e','#2dd4bf'], azul:['#2563eb','#60a5fa'], roxo:['#7c3aed','#a78bfa'], rosa:['#db2777','#f472b6'], vermelho:['#dc2626','#f87171'], laranja:['#ea580c','#fb923c'], grafite:['#334155','#cbd5e1'] };
+const mq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+function aplicarTema(){
+  const p = S.perfil, r = document.documentElement;
+  if(p.tema==='auto') r.removeAttribute('data-theme'); else r.setAttribute('data-theme', p.tema);
+  const escuro = p.tema==='dark' || (p.tema==='auto' && mq && mq.matches);
+  const c = (CORES[p.cor]||CORES.verde)[escuro?1:0];
+  r.style.setProperty('--acc', c);
+  r.style.setProperty('--acc-ink', escuro ? '#0b0f0e' : '#ffffff');
+  r.style.setProperty('--acc-soft', `color-mix(in srgb, ${c} ${escuro?18:12}%, ${escuro?'#181e1d':'#ffffff'})`);
+  const m = document.querySelector('meta[name=theme-color]'); if(m) m.setAttribute('content', escuro ? '#0f1312' : c);
+}
+if(mq && mq.addEventListener) mq.addEventListener('change', aplicarTema);
+aplicarTema();
 let saveErr = false;
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); saveErr=false; }catch(e){ saveErr=true; } }
 save();
@@ -246,8 +286,9 @@ const cBtn = (key, label, act, extra='') => `<button class="btn sm bad" data-act
 function render(){
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab));
   const views = {hoje:vHoje, semana:vSemana, treino:vTreino, corrida:vCorrida, comida:vComida, corpo:vCorpo, config:vConfig};
-  const subs = {hoje:dataLonga(hoje()), semana:'Calendário de treinos', treino:'Musculação', corrida:'Corridas', comida:'Alimentação', corpo:'Peso e medidas', config:'Configurações'};
+  const subs = {hoje:dataLonga(hoje()), semana:'Calendário de treinos', treino:'Musculação', corrida:'Corridas', comida:'Alimentação', corpo:'Peso e medidas', config:'Perfil e configurações'};
   $('#sub').textContent = subs[ui.tab];
+  $('#avatar').innerHTML = avatarHTML();
   $('#view').innerHTML = (saveErr?'<div class="card warnbox">⚠️ Não consegui salvar no aparelho. Faça um backup em Configurações.</div>':'') + views[ui.tab]();
 }
 
@@ -258,12 +299,24 @@ function totaisDia(d){
   return t;
 }
 function corpoOrdenado(){ return [...S.corpo].sort((a,b)=>a.data.localeCompare(b.data)); }
+const avatarHTML = () => S.perfil.foto ? `<img src="${esc(S.perfil.foto)}" alt="">` : esc((S.perfil.nome||'?').trim().charAt(0).toUpperCase()||'🙂');
+function saudacao(){ const h = new Date().getHours(); return h<12?'Bom dia':h<18?'Boa tarde':'Boa noite'; }
+function contagem(){
+  const p = S.perfil; if(!p.provaData) return '';
+  const dias = Math.round((dt(p.provaData) - dt(hoje()))/864e5);
+  const nome = esc(p.provaNome||'a prova');
+  if(dias>1) return `<div style="margin-top:12px;display:flex;align-items:baseline;gap:8px"><span class="stat" style="font-size:34px">${dias}</span><span>dias para ${nome}<div class="xs mute">${Math.floor(dias/7)} semanas · ${dataCurta(p.provaData)}/${p.provaData.slice(0,4)}</div></span></div>`;
+  if(dias===1) return `<div style="margin-top:12px"><b>Amanhã é ${nome}! 🔥</b></div>`;
+  if(dias===0) return `<div style="margin-top:12px"><b>Hoje é ${nome}! Bora! 🏃‍♀️🔥</b></div>`;
+  return `<div style="margin-top:12px" class="sm">${nome} foi há ${-dias} dias 🏅</div>`;
+}
 function vHoje(){
   const d = hoje(), dow = dt(d).getDay(), pl = S.plano[dow] || {};
   const f = pl.ficha ? fichaById(pl.ficha) : null;
   const treinoFeito = S.sessoes.some(s=>s.data===d);
   const corridaFeita = S.corridas.some(c=>c.data===d);
-  let h = '';
+  const P = S.perfil;
+  let h = `<div class="card hero"><div class="row" style="flex-wrap:nowrap;gap:12px"><button class="avatar big" style="border-color:var(--acc-ink)" data-act="tab" data-tab="config" aria-label="Perfil">${avatarHTML()}</button><div class="grow"><div style="font-size:20px;font-weight:700">${saudacao()}${P.nome?', '+esc(P.nome):''}!</div>${P.frase?`<div class="sm mute">${esc(P.frase)}</div>`:''}</div></div>${contagem()}${!P.provaData?`<button class="btn sm" style="margin-top:10px;background:transparent;color:inherit;border-color:currentColor" data-act="tab" data-tab="config">📅 Definir a data da maratona</button>`:''}</div>`;
   if(S.ativa) h += `<div class="card banner"><div class="row between"><div><b>Treino em andamento</b><div class="sm mute">${esc(S.ativa.fichaNome)}</div></div><button class="btn pri" data-act="tab" data-tab="treino">Continuar</button></div></div>`;
   h += `<div class="card"><h2>Plano de hoje · ${DIAS[dow]}</h2>`;
   if(f) h += `<div class="row between" style="margin-top:6px"><div class="row"><span class="badge">${esc(f.letra)}</span><div><b>${esc(f.nome)}</b><div class="xs mute">${f.exercicios.length} exercícios</div></div></div>${treinoFeito?'<span class="done">✓ feito</span>':(S.ativa?'':`<button class="btn pri sm" data-act="iniciar" data-id="${f.id}">Iniciar</button>`)}</div>`;
@@ -271,6 +324,7 @@ function vHoje(){
   if(!f && !pl.corrida) h += `<div class="mute">${esc(pl.nota||'Descanso')} 😌</div>`;
   else if(pl.nota) h += `<div class="xs mute" style="margin-top:8px">${esc(pl.nota)}</div>`;
   h += `</div>`;
+  h += habitos(d);
 
   // semana
   const ini = inicioSemana(d), fim = addDias(ini,6);
@@ -299,7 +353,7 @@ function vHoje(){
   }
   // backup
   const dias = S.ultimoBackup ? Math.floor((Date.now()-new Date(S.ultimoBackup))/864e5) : null;
-  const temDados = S.sessoes.length+S.corridas.length+S.diario.length+S.corpo.length > 0;
+  const temDados = S.sessoes.length+S.corridas.length+S.diario.length+S.corpo.length+Object.keys(S.agua).length+Object.keys(S.doce).length > 0;
   if(temDados && (dias===null || dias>=7)) h += `<div class="card warnbox"><div class="row between"><div class="sm">💾 ${dias===null?'Você ainda não fez backup.':'Último backup há '+dias+' dias.'}<div class="xs mute">Os dados ficam só neste celular.</div></div><button class="btn sm" data-act="exportar">Backup</button></div></div>`;
   return h;
 }
@@ -311,6 +365,33 @@ function macroBars(t, m){
   return line('Calorias', t.kcal, m.kcal, 'var(--acc)', 'kcal') +
     `<div class="grid3">${mini('Proteína', t.p, m.p, 'var(--p)')}${mini('Carbo', t.c, m.c, 'var(--c)')}${mini('Gordura', t.g, m.g, 'var(--g)')}</div>` +
     (!num(m.kcal)?`<div class="xs mute" style="margin-top:8px">Defina suas metas em ⚙️ Configurações.</div>`:'');
+}
+
+/* ---------- HÁBITOS: água e sem doce ---------- */
+function streakDoce(){
+  const h = hoje(); if(S.doce[h]===false) return 0;
+  let d = S.doce[h]===true ? h : addDias(h,-1), n = 0;
+  while(S.doce[d]===true){ n++; d = addDias(d,-1); }
+  return n;
+}
+function recordeDoce(){
+  const ds = Object.keys(S.doce).filter(k=>S.doce[k]===true).sort(); let best=0, run=0, prev=null;
+  ds.forEach(d=>{ run = prev && addDias(prev,1)===d ? run+1 : 1; best = Math.max(best, run); prev = d; });
+  return best;
+}
+function habitos(d){
+  const ml = S.agua[d]||0, meta = num(S.metas.agua)||2000, copo = num(S.metas.copo)||250;
+  const pc = Math.min(100, ml/meta*100), dv = S.doce[d], st = streakDoce(), rec = recordeDoce();
+  const L = v => fmt(v/1000, 2)+' L';
+  return `<div class="card"><h2>Hábitos${d===hoje()?' de hoje':''}</h2>
+    <div class="row between"><b>💧 Água</b><span class="sm"><b>${L(ml)}</b> <span class="mute">/ ${L(meta)}</span>${ml>=meta?' ✅':''}</span></div>
+    <div class="bar" style="height:10px"><i style="width:${pc}%;background:#38bdf8"></i></div>
+    <div class="row" style="margin-top:8px"><button class="btn sm" data-act="agua" data-d="${d}" data-n="-${copo}" ${ml?'':'disabled'} aria-label="Tirar um copo">−</button><button class="btn sm grow" data-act="agua" data-d="${d}" data-n="${copo}">+ copo ${fmt(copo,0)} ml</button><button class="btn sm grow" data-act="agua" data-d="${d}" data-n="500">+ 500 ml</button></div>
+    <div class="row between" style="margin-top:14px"><b>🍬 Doce</b>${st?`<span class="sm">🔥 <b>${st}</b> ${st===1?'dia':'dias'} sem doce</span>`:(rec?'':'<span class="xs mute">marque seu dia</span>')}</div>
+    <div class="chips" style="margin-top:6px"><button class="chip ${dv===true?'on':''}" data-act="doce" data-d="${d}" data-v="1">🚫 Sem doce</button><button class="chip ${dv===false?'on':''}" style="${dv===false?'border-color:var(--warn);color:var(--warn);background:transparent':''}" data-act="doce" data-d="${d}" data-v="0">🍫 Comi doce</button></div>
+    ${rec?`<div class="xs mute" style="margin-top:6px">Recorde: ${rec} ${rec===1?'dia':'dias'} seguidos</div>`:''}
+    <div style="display:flex;gap:3px;margin-top:8px">${Array.from({length:14},(_,i)=>{ const x = addDias(d,i-13), v = S.doce[x]; return `<div title="${dataCurta(x)}" style="flex:1;height:8px;border-radius:3px;background:${v===true?'var(--ok)':v===false?'var(--warn)':'var(--line)'}"></div>`; }).join('')}</div>
+    <div class="xs mute" style="margin-top:3px">últimos 14 dias</div></div>`;
 }
 
 /* ---------- SEMANA ---------- */
@@ -343,6 +424,8 @@ function vSemana(){
     if(!x.pl.corrida && x.runs.length) linhas += `<div class="row between" style="margin-top:6px"><span class="sm">🏃 Corrida ${fmt(x.runs.reduce((a,c)=>a+(c.km||0),0),1)} km <span class="tag">extra</span></span><span class="done">✓</span></div>`;
     if(!linhas) linhas = `<div class="sm mute" style="margin-top:4px">${esc(x.pl.nota||'Descanso')} 😌</div>`;
     else if(x.pl.nota) linhas += `<div class="xs mute" style="margin-top:6px">${esc(x.pl.nota)}</div>`;
+    const ml = S.agua[d]||0, dv = S.doce[d];
+    if(ml || dv!==undefined) linhas += `<div class="xs" style="margin-top:8px;display:flex;gap:12px">${ml?`<span>💧 ${fmt(ml/1000,1)} L${ml>=(num(S.metas.agua)||2000)?' ✅':''}</span>`:''}${dv===true?'<span>🚫🍬 sem doce</span>':dv===false?'<span class="mute">🍫 comeu doce</span>':''}</div>`;
     h += `<div class="card" data-act="diaDlg" data-d="${d}" style="cursor:pointer;${isH?'border-color:var(--acc);border-width:2px':''}"><div class="row between"><b style="text-transform:capitalize">${DIAS[dd.getDay()]} <span class="mute" style="font-weight:400">${dataCurta(d)}</span></b>${isH?'<span class="tag">hoje</span>':''}</div>${linhas}</div>`;
   });
   h += `<button class="btn ghost full" data-act="tab" data-tab="config">Editar plano da semana</button>`;
@@ -527,6 +610,7 @@ function vComida(){
   const d = ui.foodDate, t = totaisDia(d), itens = S.diario.filter(x=>x.data===d);
   let h = `<div class="row between" style="margin-bottom:10px"><button class="btn sm" data-act="foodDay" data-n="-1">‹</button><div style="text-align:center"><b>${d===hoje()?'Hoje':dataLonga(d)}</b>${d===hoje()?`<div class="xs mute">${dataLonga(d)}</div>`:`<div><button class="btn ghost sm" data-act="foodHoje">ir para hoje</button></div>`}</div><button class="btn sm" data-act="foodDay" data-n="1">›</button></div>`;
   h += `<div class="card">${macroBars(t,S.metas)}</div>`;
+  h += habitos(d);
   if(!itens.length){
     const ontem = S.diario.filter(x=>x.data===addDias(d,-1));
     if(ontem.length) h += `<button class="btn full" style="margin-bottom:12px" data-act="copiarOntem">Copiar refeições do dia anterior (${ontem.length} itens)</button>`;
@@ -598,8 +682,14 @@ function vCorpo(){
 
 /* ---------- CONFIG ---------- */
 function vConfig(){
-  const m = S.metas;
-  let h = `<div class="card"><h2>Metas diárias de alimentação</h2><div class="grid4"><div><label>kcal</label><input inputmode="decimal" data-bind="meta" data-k="kcal" value="${esc(m.kcal)}"></div><div><label>Prot (g)</label><input inputmode="decimal" data-bind="meta" data-k="p" value="${esc(m.p)}"></div><div><label>Carb (g)</label><input inputmode="decimal" data-bind="meta" data-k="c" value="${esc(m.c)}"></div><div><label>Gord (g)</label><input inputmode="decimal" data-bind="meta" data-k="g" value="${esc(m.g)}"></div></div><div class="xs mute" style="margin-top:6px">Salva sozinho.</div></div>`;
+  const m = S.metas, P = S.perfil;
+  let h = `<div class="card"><h2>Perfil</h2><div class="row" style="flex-wrap:nowrap;gap:14px"><label class="avatar big" style="margin:0" aria-label="Trocar foto">${avatarHTML()}<input type="file" accept="image/*" id="fotoPerfil" hidden></label><div class="grow"><label class="btn sm" style="margin:0;display:inline-block;color:var(--ink)">${P.foto?'Trocar foto':'Escolher foto'}<input type="file" accept="image/*" id="fotoPerfil2" hidden></label>${P.foto?` <button class="btn ghost sm" data-act="fotoPerfilRm">Remover</button>`:''}</div></div>
+    <label>Seu nome</label><input data-bind="pf" data-k="nome" value="${esc(P.nome)}" placeholder="Como quer ser chamada">
+    <label>Frase / meta</label><input data-bind="pf" data-k="frase" value="${esc(P.frase)}" placeholder="Maratona 2027 💪">
+    <div class="grid2"><div><label>Prova</label><input data-bind="pf" data-k="provaNome" value="${esc(P.provaNome)}" placeholder="Maratona do Rio"></div><div><label>Data da prova</label><input type="date" data-bind="pf" data-k="provaData" value="${esc(P.provaData)}"></div></div></div>`;
+  h += `<div class="card"><h2>Aparência</h2><label style="margin-top:0">Cor</label><div class="row">${Object.entries(CORES).map(([k,v])=>`<button class="cor ${P.cor===k?'on':''}" style="background:${v[0]}" data-act="cor" data-k="${k}" aria-label="${k}" title="${k}"></button>`).join('')}</div>
+    <label>Tema</label><div class="chips">${[['auto','Automático'],['light','☀️ Claro'],['dark','🌙 Escuro']].map(([k,l])=>`<button class="chip ${P.tema===k?'on':''}" data-act="tema" data-k="${k}">${l}</button>`).join('')}</div></div>`;
+  h += `<div class="card"><h2>Metas diárias de alimentação</h2><div class="grid4"><div><label>kcal</label><input inputmode="decimal" data-bind="meta" data-k="kcal" value="${esc(m.kcal)}"></div><div><label>Prot (g)</label><input inputmode="decimal" data-bind="meta" data-k="p" value="${esc(m.p)}"></div><div><label>Carb (g)</label><input inputmode="decimal" data-bind="meta" data-k="c" value="${esc(m.c)}"></div><div><label>Gord (g)</label><input inputmode="decimal" data-bind="meta" data-k="g" value="${esc(m.g)}"></div></div><div class="grid2"><div><label>💧 Meta de água (ml)</label><input inputmode="numeric" data-bind="meta" data-k="agua" value="${esc(m.agua)}"></div><div><label>Tamanho do copo (ml)</label><input inputmode="numeric" data-bind="meta" data-k="copo" value="${esc(m.copo)}"></div></div><div class="xs mute" style="margin-top:6px">Salva sozinho.</div></div>`;
   h += `<div class="card"><h2>Plano da semana</h2><label style="margin-top:0">Nome do ciclo</label><input data-bind="titulo" value="${esc(S.titulo)}">`;
   [1,2,3,4,5,6,0].forEach(i=>{ const p = S.plano[i];
     h += `<div class="edex"><b class="sm" style="text-transform:capitalize">${DIAS[i]}</b><div class="grid2"><div><label>Musculação</label><select data-bind="plFicha" data-i="${i}"><option value="">—</option>${S.fichas.filter(f=>f.ativa||f.id===p.ficha).map(f=>`<option value="${f.id}" ${f.id===p.ficha?'selected':''}>${esc(f.letra)} – ${esc(f.nome)}</option>`).join('')}</select></div><div><label>Corrida</label><input data-bind="plCorrida" data-i="${i}" value="${esc(p.corrida)}" placeholder="—"></div></div><label>Nota</label><input data-bind="plNota" data-i="${i}" value="${esc(p.nota)}" placeholder="Opcional"></div>`; });
@@ -631,7 +721,7 @@ async function exportar(){
 }
 function importar(file){
   const r = new FileReader();
-  r.onload = () => { try{ const d = JSON.parse(r.result); if(!d || !Array.isArray(d.fichas)) throw 0; S = d; save(); ui.tab='hoje'; render(); openDlg('Backup importado','<div class="sm">Seus dados foram restaurados. ✓</div>'); }catch(e){ openDlg('Ops','<div class="sm">Esse arquivo não parece um backup da Rotina.</div>'); } };
+  r.onload = () => { try{ const d = JSON.parse(r.result); if(!d || !Array.isArray(d.fichas)) throw 0; S = d; migrar(); aplicarTema(); save(); ui.tab='hoje'; render(); openDlg('Backup importado','<div class="sm">Seus dados foram restaurados. ✓</div>'); }catch(e){ openDlg('Ops','<div class="sm">Esse arquivo não parece um backup da Rotina.</div>'); } };
   r.readAsText(file);
 }
 
@@ -646,6 +736,11 @@ document.addEventListener('click', e=>{
     case 'iniciar': if(!S.ativa) iniciar(id, el.dataset.d); break;
     case 'semNav': ui.semana = addDias(ui.semana || inicioSemana(hoje()), +el.dataset.n); render(); break;
     case 'semHoje': ui.semana = null; render(); break;
+    case 'agua': { const d = el.dataset.d; S.agua[d] = Math.max(0, (S.agua[d]||0) + (+el.dataset.n)); if(!S.agua[d]) delete S.agua[d]; save(); render(); break; }
+    case 'doce': { const d = el.dataset.d, v = el.dataset.v==='1'; if(S.doce[d]===v) delete S.doce[d]; else S.doce[d] = v; save(); render(); break; }
+    case 'cor': S.perfil.cor = el.dataset.k; save(); aplicarTema(); render(); break;
+    case 'tema': S.perfil.tema = el.dataset.k; save(); aplicarTema(); render(); break;
+    case 'fotoPerfilRm': S.perfil.foto = null; save(); render(); break;
     case 'diaDlg': if(e.target.closest('.thumb')) break; diaDlg(el.dataset.d); break;
     case 'runNoDia': ui.runDate = el.dataset.d; ui.runEdit = null; ui.runTipo = null; ui.tab = 'corrida'; closeDlg(); render(); window.scrollTo(0,0); break;
     case 'okSerie': { const s = S.ativa.itens[i].series[j]; if(!s.ok) preencherSerie(i,j); s.ok=!s.ok; save(); render(); break; }
@@ -715,7 +810,7 @@ document.addEventListener('click', e=>{
     case 'corpoCancel': ui.corpoEdit=null; render(); break;
     case 'corpoDel': if(confirmTap('delC'+ui.corpoEdit)){ S.corpo=S.corpo.filter(c=>c.id!==ui.corpoEdit); ui.corpoEdit=null; save(); render(); } break;
     case 'exportar': exportar(); break;
-    case 'reset': if(confirmTap('reset')){ S = seed(); save(); ui.tab='hoje'; render(); } break;
+    case 'reset': if(confirmTap('reset')){ S = seed(); migrar(); aplicarTema(); save(); ui.tab='hoje'; render(); } break;
   }
 });
 document.addEventListener('input', e=>{
@@ -737,6 +832,7 @@ document.addEventListener('input', e=>{
     case 'eAlvo': ui.draft.exercicios[i].alvo = v; break;
     case 'eObs': ui.draft.exercicios[i].obs = v; break;
     case 'meta': S.metas[el.dataset.k] = v; save(); break;
+    case 'pf': S.perfil[el.dataset.k] = v; save(); if(el.dataset.k==='nome') $('#avatar').innerHTML = avatarHTML(); break;
     case 'titulo': S.titulo = v; save(); break;
     case 'plCorrida': S.plano[i].corrida = v; save(); break;
     case 'plNota': S.plano[i].nota = v; save(); break;
@@ -745,6 +841,7 @@ document.addEventListener('input', e=>{
 document.addEventListener('change', e=>{
   const el = e.target, b = el.dataset.bind;
   if(el.id==='imp' && el.files[0]) { importar(el.files[0]); return; }
+  if((el.id==='fotoPerfil'||el.id==='fotoPerfil2') && el.files[0]){ fotoQuadrada(el.files[0], url=>{ S.perfil.foto = url; save(); render(); }); return; }
   if(el.dataset.act==='evolSel'){ ui.evolEx = el.value; render(); return; }
   if(b==='eTipo') ui.draft.exercicios[+el.dataset.i].tipo = el.value;
   if(b==='eFoto' && el.files[0]){ const k = +el.dataset.i; comprimirFoto(el.files[0], url=>{ if(ui.draft){ ui.draft.exercicios[k].foto = url; render(); } }); }
