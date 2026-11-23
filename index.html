@@ -32,6 +32,10 @@
 .avatar.big{width:84px;height:84px;font-size:34px;border-width:3px}
 .card.hero{background:var(--acc);color:var(--acc-ink);border:0}
 .card.hero .mute{color:inherit;opacity:.85}
+.scan{position:fixed;inset:0;z-index:50;background:#000;display:flex;flex-direction:column}
+.scan video{flex:1;width:100%;object-fit:cover;min-height:0}
+.scan .mira{position:absolute;left:10%;right:10%;top:38%;height:22%;border:3px solid #fff;border-radius:16px;box-shadow:0 0 0 999px rgba(0,0,0,.35);pointer-events:none}
+.scan footer{padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));background:#000;color:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .cor{width:38px;height:38px;border-radius:50%;border:3px solid transparent;cursor:pointer;padding:0}
 .cor.on{border-color:var(--ink);box-shadow:inset 0 0 0 2px var(--card)}
 *{box-sizing:border-box}
@@ -705,14 +709,83 @@ function baseSugestao(nome){
   if(i<0){ const l = baseBusca(nome); i = l.length ? l[0] : -1; }
   return i<0 ? null : i;
 }
+/* ---------- código de barras: câmera + Open Food Facts ---------- */
+async function offProduto(cod){
+  const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${cod}.json?fields=product_name,product_name_pt,generic_name,brands,nutriments,serving_size,serving_quantity`);
+  const j = await r.json();
+  if(j.status!==1 || !j.product) return null;
+  const pr = j.product, n = pr.nutriments||{};
+  const v = x => x==null||x===''||isNaN(+x) ? null : +x;
+  let k = v(n['energy-kcal_100g']); if(k==null && v(n['energy_100g'])!=null) k = v(n['energy_100g'])/4.184;
+  const nome = (pr.product_name_pt||pr.product_name||pr.generic_name||'').trim();
+  const marca = (pr.brands||'').split(',')[0].trim();
+  const sq = v(pr.serving_quantity);
+  const f = sq ? sq/100 : 1;
+  return { nome: nome || ('Produto '+cod), marca, codigo:cod, temValores: k!=null,
+    porcao: sq ? (pr.serving_size ? String(pr.serving_size).trim() : sq+' g') : '100 g',
+    kcal: k!=null ? Math.round(k*f) : null, p: v(n.proteins_100g)!=null ? r1(n.proteins_100g*f) : null,
+    c: v(n.carbohydrates_100g)!=null ? r1(n.carbohydrates_100g*f) : null, g: v(n.fat_100g)!=null ? r1(n.fat_100g*f) : null };
+}
+async function buscarCodigo(cod, ref){
+  cod = String(cod||'').replace(/\D/g,'');
+  if(cod.length<8){ openDlg('Código incompleto','<div class="sm">Confira os números do código de barras (8 a 14 dígitos).</div>'); return; }
+  const meu = S.alimentos.find(a=>a.codigo===cod);
+  if(meu){ dlgQtd(meu.id, ref); return; }
+  openDlg('Buscando…', `<div class="empty sm">Procurando o código ${cod}…</div>`);
+  let p = null, erro = false;
+  try{ p = await offProduto(cod); }catch(e){ erro = true; }
+  if(p && p.temValores){
+    const a = {id:uid(), nome: p.nome + (p.marca && !p.nome.toLowerCase().includes(p.marca.toLowerCase()) ? ' ('+p.marca+')' : ''), porcao:p.porcao, kcal:p.kcal||0, p:p.p||0, c:p.c||0, g:p.g||0, codigo:cod, origem:'OFF'};
+    S.alimentos.push(a); save(); dlgQtd(a.id, ref);
+    $('#dlgB').insertAdjacentHTML('afterbegin', `<div class="xs" style="margin-bottom:8px;color:var(--ok)">✓ Encontrado pelo código ${cod}. Confira com a embalagem e ajuste em "Editar alimento" se precisar.</div>`);
+    return;
+  }
+  dlgAlimento(ref, null, {codigo:cod, nome: p ? p.nome + (p.marca?' ('+p.marca+')':'') : ''});
+  $('#dlgB').insertAdjacentHTML('afterbegin', `<div class="card warnbox sm" style="margin-bottom:10px">${erro?'Sem internet para buscar agora.':p?'Achei o produto, mas a base não tem os valores nutricionais.':'Esse código ainda não está na base do Open Food Facts.'} Preencha com a tabela da embalagem: na próxima leitura deste código eu já lembro.</div>`);
+}
+let scanStop = null;
+function fecharScanner(){ try{ scanStop && scanStop(); }catch(e){} scanStop = null; const h = $('#scanHost'); if(h) h.remove(); }
+async function abrirScanner(ref){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ openDlg('Câmera indisponível','<div class="sm">Este navegador não libera a câmera. Digite os números do código de barras no campo de busca.</div>'); return; }
+  closeDlg();
+  const host = document.createElement('div'); host.id = 'scanHost'; host.className = 'scan';
+  host.innerHTML = `<video id="scanVid" playsinline muted autoplay></video><div class="mira"></div><footer><span id="scanMsg" class="sm">Aponte para o código de barras</span><button class="btn" id="scanFechar">Cancelar</button></footer>`;
+  document.body.appendChild(host);
+  $('#scanFechar').onclick = () => { fecharScanner(); dlgAddFood(ref); };
+  const vid = $('#scanVid');
+  const achou = cod => { if(navigator.vibrate) navigator.vibrate(80); fecharScanner(); buscarCodigo(cod, ref); };
+  try{
+    if('BarcodeDetector' in window && (await BarcodeDetector.getSupportedFormats()).includes('ean_13')){
+      const st = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+      let vivo = true; scanStop = () => { vivo = false; st.getTracks().forEach(t=>t.stop()); };
+      if(!$('#scanHost')){ scanStop(); return; }
+      vid.srcObject = st; await vid.play();
+      const det = new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']});
+      (async function loop(){ while(vivo){ try{ const r = await det.detect(vid); if(r[0] && r[0].rawValue){ achou(r[0].rawValue); return; } }catch(e){} await new Promise(ok=>setTimeout(ok,200)); } })();
+    } else {
+      $('#scanMsg').textContent = 'Preparando a câmera…';
+      if(!window.ZXingBrowser) await new Promise((ok,ko)=>{ const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js'; sc.onload = ok; sc.onerror = () => ko(new Error('sem internet para carregar o leitor')); document.head.appendChild(sc); });
+      if(!$('#scanHost')) return;
+      const rd = new ZXingBrowser.BrowserMultiFormatReader();
+      const ctl = await rd.decodeFromConstraints({video:{facingMode:{ideal:'environment'}}, audio:false}, vid, res => { if(res) achou(res.getText()); });
+      scanStop = () => ctl.stop();
+      if(!$('#scanHost')){ ctl.stop(); return; }
+      $('#scanMsg').textContent = 'Aponte para o código de barras';
+    }
+  }catch(e){
+    fecharScanner();
+    openDlg('Não consegui abrir a câmera', `<div class="sm">${e && e.name==='NotAllowedError' ? 'A permissão da câmera foi negada. Libere a câmera para este site nas configurações do navegador.' : esc(e && e.message || 'Erro ao abrir a câmera.')}<br><br>Você também pode digitar os números do código no campo de busca.</div>`);
+  }
+}
 function dlgAddFood(ref, q=''){
   const usados = {}; S.diario.forEach(x=>{ if(x.alimentoId) usados[x.alimentoId] = Math.max(usados[x.alimentoId]||'', x.data); });
   const base = baseBusca(q).slice(0,30);
   const baseHTML = q.trim().length<2 ? `<div class="xs mute" style="margin-top:10px">Digite o nome para buscar também em ${BASE_TACO.length} alimentos da tabela TACO, com kcal e macros já preenchidos.</div>`
     : base.length ? `<div class="sec" style="margin-top:14px">Tabela TACO</div>${base.map(i=>{ const a = baseInfo(i); return `<div class="food" data-act="basePick" data-i="${i}" data-ref="${ref}"><div><div class="sm"><b>${esc(a.nome)}</b> <span class="mute">${esc(a.porcao)}</span></div><div class="macros">${fmt(a.kcal,0)} kcal · <b class="p">P</b> ${fmt(a.p)} · <b class="c">C</b> ${fmt(a.c)} · <b class="g">G</b> ${fmt(a.g)}</div></div><span class="mute">›</span></div>`; }).join('')}` : '';
   const qs = semAc(q);
-  const lista = S.alimentos.filter(a=>!qs || qs.split(/\s+/).every(w=>semAc(a.nome).includes(w))).sort((a,b)=>(usados[b.id]||'').localeCompare(usados[a.id]||'') || a.nome.localeCompare(b.nome,'pt-BR'));
-  openDlg(REFS[ref], `<input id="fq" placeholder="Buscar em Meus alimentos..." value="${esc(q)}" data-ref="${ref}" autocomplete="off">
+  const lista = S.alimentos.filter(a=>!qs || (a.codigo && a.codigo===qs) || qs.split(/\s+/).every(w=>semAc(a.nome).includes(w))).sort((a,b)=>(usados[b.id]||'').localeCompare(usados[a.id]||'') || a.nome.localeCompare(b.nome,'pt-BR'));
+  openDlg(REFS[ref], `<div class="row" style="flex-wrap:nowrap"><input id="fq" class="grow" placeholder="Nome do alimento ou código de barras" value="${esc(q)}" data-ref="${ref}" autocomplete="off"><button class="btn" data-act="scan" data-ref="${ref}" aria-label="Ler código de barras" title="Ler código de barras">📷</button></div>
+    ${/^\d{8,14}$/.test(q.trim())?`<button class="btn pri full" style="margin-top:8px" data-act="codBuscar" data-ref="${ref}">🔎 Buscar produto pelo código ${esc(q.trim())}</button>`:''}
     <div style="margin-top:8px" id="flist">${lista.length? lista.slice(0,50).map(a=>`<div class="food" data-act="foodPick" data-id="${a.id}" data-ref="${ref}"><div><div class="sm"><b>${esc(a.nome)}</b> <span class="mute">${esc(a.porcao)}</span></div><div class="macros">${fmt(a.kcal,0)} kcal · <b class="p">P</b> ${fmt(a.p)} · <b class="c">C</b> ${fmt(a.c)} · <b class="g">G</b> ${fmt(a.g)}</div></div><span class="mute">›</span></div>`).join('') : (base.length?'':`<div class="empty sm">${S.alimentos.length||q?'Nada encontrado.':'Você ainda não tem alimentos salvos.'}</div>`)}${baseHTML}</div>
     <button class="btn pri full" style="margin-top:12px" data-act="foodNovo" data-ref="${ref}">+ Novo alimento</button>`);
   const fq = $('#fq'); fq.focus(); fq.setSelectionRange(q.length,q.length);
@@ -732,15 +805,17 @@ function qprev(){
   const a = S.alimentos.find(x=>x.id===btn.dataset.id), q = num($('#qtd').value)||0;
   el.innerHTML = `<div class="stat" style="font-size:20px">${fmt(a.kcal*q,0)} kcal</div><div class="macros"><b class="p">P</b> ${fmt(a.p*q)} g · <b class="c">C</b> ${fmt(a.c*q)} g · <b class="g">G</b> ${fmt(a.g*q)} g</div>`;
 }
-function dlgAlimento(ref, id){
-  const a = id ? S.alimentos.find(x=>x.id===id) : null;
-  openDlg(a?'Editar alimento':'Novo alimento', `<label style="margin-top:0">Nome</label><input id="aNome" value="${a?esc(a.nome):''}" placeholder="Ovo cozido">
+function dlgAlimento(ref, id, pre){
+  const a = id ? S.alimentos.find(x=>x.id===id) : (pre && pre.nome ? {nome:pre.nome, porcao:'', kcal:null, p:null, c:null, g:null, novo:true} : null);
+  const cod = (a && a.codigo) || (pre && pre.codigo) || '';
+  const ed = a && !a.novo;
+  openDlg(ed?'Editar alimento':'Novo alimento', `${cod?`<div class="xs mute" style="margin-bottom:4px">Código de barras: ${esc(cod)}</div>`:''}<label style="margin-top:0">Nome</label><input id="aNome" value="${a?esc(a.nome):''}" placeholder="Ovo cozido">
     <label>Porção de referência</label><input id="aPorcao" value="${a?esc(a.porcao):''}" placeholder="1 unidade, 100 g, 1 colher...">
     <div class="grid4"><div><label>kcal</label><input id="aKcal" inputmode="decimal" value="${a?fmtIn(a.kcal):''}"></div><div><label>Prot (g)</label><input id="aP" inputmode="decimal" value="${a?fmtIn(a.p):''}"></div><div><label>Carb (g)</label><input id="aC" inputmode="decimal" value="${a?fmtIn(a.c):''}"></div><div><label>Gord (g)</label><input id="aG" inputmode="decimal" value="${a?fmtIn(a.g):''}"></div></div>
     <div id="aSug"></div>
     <div class="xs mute" style="margin-top:6px">Digite o nome e eu procuro na tabela TACO. Se não achar, os valores estão na tabela nutricional da embalagem. Depois de salvo, você só escolhe o alimento e a quantidade.</div>
-    <button class="btn pri full" style="margin-top:12px" data-act="alimSave" data-ref="${ref??''}" data-id="${a?a.id:''}">${ref!==null&&ref!==undefined&&ref!==''?'Salvar e escolher quantidade':'Salvar'}</button>
-    ${a?`<div style="text-align:center;margin-top:10px">${cBtn('delA'+a.id,'Excluir alimento','alimDel',`data-id="${a.id}"`)}</div>`:''}`);
+    <button class="btn pri full" style="margin-top:12px" data-act="alimSave" data-ref="${ref??''}" data-id="${ed?a.id:''}" data-cod="${esc(cod)}">${ref!==null&&ref!==undefined&&ref!==''?'Salvar e escolher quantidade':'Salvar'}</button>
+    ${ed?`<div style="text-align:center;margin-top:10px">${cBtn('delA'+a.id,'Excluir alimento','alimDel',`data-id="${a.id}"`)}</div>`:''}`);
 }
 const fmtIn = v => v==null?'':String(v).replace('.',',');
 
@@ -868,6 +943,8 @@ document.addEventListener('click', e=>{
     case 'foodHoje': ui.foodDate = hoje(); render(); break;
     case 'foodAdd': dlgAddFood(+el.dataset.ref); break;
     case 'foodPick': dlgQtd(id, +el.dataset.ref); break;
+    case 'scan': abrirScanner(+el.dataset.ref); break;
+    case 'codBuscar': buscarCodigo($('#fq').value, +el.dataset.ref); break;
     case 'basePick': { const a = Object.assign({id:uid()}, baseInfo(i)); S.alimentos.push(a); save(); dlgQtd(a.id, +el.dataset.ref); break; }
     case 'aSugUse': { const a = baseInfo(i); $('#aNome').value = a.nome; $('#aPorcao').value = a.porcao; $('#aKcal').value = fmtIn(a.kcal); $('#aP').value = fmtIn(a.p); $('#aC').value = fmtIn(a.c); $('#aG').value = fmtIn(a.g); $('#aSug').innerHTML = '<div class="xs" style="margin-top:8px;color:var(--ok)">✓ Valores da TACO preenchidos. Pode ajustar se quiser.</div>'; break; }
     case 'foodNovo': dlgAlimento(+el.dataset.ref); break;
@@ -884,6 +961,7 @@ document.addEventListener('click', e=>{
       const nome = $('#aNome').value.trim(); if(!nome){ $('#aNome').focus(); return; }
       const dados = {nome, porcao: $('#aPorcao').value.trim()||'1 porção', kcal:num($('#aKcal').value)||0, p:num($('#aP').value)||0, c:num($('#aC').value)||0, g:num($('#aG').value)||0};
       let al;
+      if(el.dataset.cod) dados.codigo = el.dataset.cod;
       if(id){ al = S.alimentos.find(x=>x.id===id); Object.assign(al, dados); } else { al = {id:uid(), ...dados}; S.alimentos.push(al); }
       save();
       if(el.dataset.ref!=='' ) dlgQtd(al.id, +el.dataset.ref); else { closeDlg(); render(); }
@@ -931,6 +1009,9 @@ document.addEventListener('input', e=>{
     case 'plCorrida': S.plano[i].corrida = v; save(); break;
     case 'plNota': S.plano[i].nota = v; save(); break;
   }
+});
+document.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && e.target.id==='fq' && /^\d{8,14}$/.test(e.target.value.trim())){ e.preventDefault(); buscarCodigo(e.target.value, +e.target.dataset.ref); }
 });
 document.addEventListener('change', e=>{
   const el = e.target, b = el.dataset.bind;
