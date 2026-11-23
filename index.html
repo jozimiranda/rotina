@@ -233,6 +233,52 @@ function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); saveErr=fals
 save();
 try{ navigator.storage && navigator.storage.persist && navigator.storage.persist(); }catch(e){}
 
+/* Base de alimentos: [nome, kcal/100g, porção típica (g/ml), descrição da porção, prot, carb, gord, fibra por 100 g].
+   Valores aproximados da Tabela Brasileira de Composição de Alimentos (TACO), trazidos do Diário de Futura Maratonista. */
+const BASE_TACO = [
+  ["Banana prata",98,70,"1 unidade média",1.3,26,0.1,2],["Banana nanica",92,100,"1 unidade média",1.4,23.8,0.1,1.9],["Maçã",56,130,"1 unidade média",0.3,15.2,0,1.3],
+  ["Laranja",37,180,"1 unidade média",1,8.9,0.1,0.8],["Mexerica / tangerina",38,135,"1 unidade média",0.8,9.6,0.1,0.9],["Mamão papaia",40,155,"meia unidade",0.5,10.4,0.1,1],
+  ["Mamão formosa",45,170,"1 fatia média",0.8,11.6,0.1,1.8],["Manga",64,140,"1 unidade pequena",0.4,16.7,0.3,1.6],["Melancia",33,200,"1 fatia média",0.9,8.1,0,0.1],
+  ["Melão",29,150,"1 fatia média",0.7,7.5,0,0.3],["Abacaxi",48,75,"1 fatia média",0.9,12.3,0.1,1],["Uva",53,100,"1 cacho pequeno",0.7,13.6,0.2,0.9],
+  ["Morango",30,120,"10 unidades",0.9,6.8,0.3,1.7],["Abacate",96,100,"meia xícara",1.2,6,8.4,6.3],["Pera",53,130,"1 unidade média",0.6,14,0.1,3],
+  ["Kiwi",51,75,"1 unidade",1.3,11.5,0.6,2.7],["Goiaba",54,170,"1 unidade média",1.1,13,0.4,6.2],["Açaí (polpa pura)",58,100,"100 g",0.8,6.2,3.9,2.6],
+  ["Açaí na tigela com guaraná",110,300,"1 tigela média",0.7,21.5,3.7,1.7],["Arroz branco cozido",128,100,"4 colheres de sopa",2.5,28.1,0.2,1.6],
+  ["Arroz integral cozido",124,100,"4 colheres de sopa",2.6,25.8,1,2.7],["Feijão carioca cozido",76,140,"1 concha média",4.8,13.6,0.5,8.5],
+  ["Feijão preto cozido",77,140,"1 concha média",4.5,14,0.5,8.4],["Macarrão cozido",102,110,"1 pegador",3.4,19.9,1.2,1.5],
+  ["Lasanha",140,250,"1 pedaço médio",7,14,6,1],["Batata cozida",52,140,"1 unidade média",1.2,11.9,0,1.3],["Batata frita",267,100,"1 porção pequena",5,35.6,13.1,8.1],
+  ["Purê de batata",95,120,"3 colheres de sopa",1.8,13,4,1.2],["Batata doce cozida",77,150,"1 unidade média",0.6,18.4,0.1,2.2],
+  ["Mandioca / aipim cozido",125,100,"1 pedaço médio",0.6,30.1,0.3,1.6],["Cuscuz de milho",113,135,"1 fatia média",2.2,25.3,0.7,2.1],
+  ["Tapioca (só a goma)",240,60,"1 tapioca média",0,60,0,0.5],["Farofa",406,30,"2 colheres de sopa",2.1,80.3,9.1,7.8],["Polenta",70,150,"1 pedaço médio",1.6,15,0.4,1],
+  ["Pão francês",300,50,"1 unidade",8,58.6,3.1,2.3],["Pão de forma",253,50,"2 fatias",7.5,49.9,2.7,2.5],["Pão integral",253,50,"2 fatias",9.4,49.9,3.7,6.9],
+  ["Pão de queijo",363,40,"1 unidade média",5.1,34.2,24.6,0.6],["Torrada",377,30,"3 unidades",10.5,74.6,3.3,3.4],["Biscoito cream cracker",432,30,"5 unidades",10.1,68.7,14.4,2.5],
+  ["Biscoito maisena",443,30,"5 unidades",8.1,75.2,12,2.1],["Bolacha recheada",472,30,"3 unidades",6.4,71,19.6,3],["Bolo simples",311,60,"1 fatia média",5.4,52,10,1],
+  ["Bolo de chocolate com cobertura",400,70,"1 fatia média",5,55,18,1.5],["Aveia em flocos",394,30,"2 colheres de sopa",13.9,66.6,8.5,9.1],
+  ["Granola",420,40,"meia xícara",10,65,14,7],["Ovo cozido",146,50,"1 unidade",13.3,0.6,9.5,0],["Ovo frito",240,50,"1 unidade",15.6,1.2,18.6,0],
+  ["Omelete (2 ovos)",154,120,"1 omelete",11,1.5,11.5,0],["Peito de frango grelhado",159,100,"1 filé médio",32,0,2.5,0],
+  ["Coxa de frango assada",215,100,"1 unidade",28.5,0,10.4,0],["Frango desfiado",163,60,"3 colheres de sopa",28,0,5,0],
+  ["Carne bovina grelhada (patinho)",219,100,"1 bife médio",35.9,0,7.3,0],["Alcatra grelhada",241,100,"1 bife médio",31.9,0,11.6,0],
+  ["Carne moída refogada",212,90,"3 colheres de sopa",26.7,0,10.9,0],["Picanha grelhada",289,100,"1 fatia grossa",26.4,0,19.5,0],
+  ["Carne de panela",200,100,"1 pedaço médio",30,1,8,0],["Linguiça grelhada",296,60,"1 gomo",23.2,0,21.9,0],["Bacon frito",500,15,"2 fatias",30,1,42,0],
+  ["Peixe grelhado (tilápia)",128,120,"1 filé",26,0,2.7,0],["Salmão grelhado",243,120,"1 filé",26.1,0,14.5,0],["Atum em lata (em água)",116,60,"meia lata",26,0,1,0],
+  ["Sardinha em lata",285,60,"meia lata",15.9,0,24,0],["Presunto",94,30,"2 fatias",14.3,2.1,2.7,0],["Peito de peru",110,30,"2 fatias",19,2,2.5,0],
+  ["Queijo muçarela",330,30,"2 fatias",22.6,3,25.2,0],["Queijo minas frescal",264,30,"1 fatia média",17.4,3.2,20.2,0],["Queijo parmesão ralado",453,10,"1 colher de sopa",35.6,1.7,33.5,0],
+  ["Requeijão",257,30,"1 colher de sopa",9.6,2.4,23.4,0],["Manteiga",726,10,"2 colheres de chá",0.4,0.1,82.4,0],["Margarina",596,10,"2 colheres de chá",0,0,67,0],
+  ["Leite integral",61,200,"1 copo (200 ml)",3.2,4.7,3.3,0],["Leite desnatado",35,200,"1 copo (200 ml)",3.4,4.9,0.2,0],["Iogurte natural",51,170,"1 pote",4.1,1.9,3,0],
+  ["Iogurte de frutas",95,170,"1 pote",3.3,15,2.4,0],["Café sem açúcar",2,100,"1 xícara",0.1,0.3,0,0],["Café com leite e açúcar",65,200,"1 xícara grande",1.9,10,1.9,0],
+  ["Açúcar",387,5,"1 colher de chá",0,99.5,0,0],["Mel",309,15,"1 colher de sopa",0,84,0,0],["Achocolatado em pó",401,20,"2 colheres de sopa",4.2,91.2,2.2,3.9],
+  ["Suco de laranja natural",45,200,"1 copo (200 ml)",0.7,10.4,0.1,0.2],["Suco de caixinha",50,200,"1 copo (200 ml)",0.2,12,0,0.1],
+  ["Refrigerante",42,350,"1 lata (350 ml)",0,10.6,0,0],["Refrigerante zero",0,350,"1 lata (350 ml)",0,0,0,0],["Cerveja",41,350,"1 lata (350 ml)",0.3,3.3,0,0],
+  ["Vinho tinto",85,150,"1 taça",0.1,2.6,0,0],["Água de coco",22,300,"1 copo grande",0,5.3,0,0.1],["Alface",11,40,"1 prato de sobremesa",1.3,1.7,0.2,1.8],
+  ["Tomate",15,80,"1 unidade pequena",1.1,3.1,0.2,1.2],["Cenoura crua",34,50,"3 colheres de sopa ralada",1.3,7.7,0.2,3.2],["Brócolis cozido",25,60,"3 ramos",2.1,4.4,0.5,3.4],
+  ["Pepino",10,50,"meia unidade",0.9,2,0,1.1],["Beterraba cozida",32,50,"3 fatias",1.3,7.2,0.1,1.9],["Abobrinha refogada",30,80,"3 colheres de sopa",1.1,4.3,1.2,1.4],
+  ["Salada mista (folhas e legumes)",20,100,"1 prato de sobremesa",1.2,3.5,0.2,1.8],["Azeite de oliva",884,8,"1 colher de sopa",0,0,100,0],
+  ["Pizza de muçarela",280,100,"1 fatia",12,30,12,1.8],["Hambúrguer (sanduíche simples)",254,150,"1 unidade",13,28,10,1.5],["Coxinha",283,80,"1 unidade média",9.6,34.5,11.8,5],
+  ["Pastel de carne",310,90,"1 unidade média",10,30,17,1.2],["Esfiha de carne",270,70,"1 unidade",11,35,9,2],["Estrogonofe de frango",157,150,"1 concha",17.6,3,8,0.1],
+  ["Feijoada",117,250,"1 concha cheia",8.7,11.6,6.5,5.1],["Pão com manteiga",360,55,"1 pão francês com manteiga",6.9,48,15,1.9],["Chocolate ao leite",540,25,"1 barra pequena",7.2,59.6,30.3,2.2],
+  ["Sorvete de massa",194,60,"1 bola",3,24,9.5,0.5],["Gelatina",61,120,"1 taça",1.2,14,0,0],["Pipoca",448,25,"1 xícara grande",9.9,70.3,15.9,14.3],["Amendoim torrado",581,30,"1 punhado",22.5,18.7,54,8],
+  ["Castanha-do-pará",643,8,"2 unidades",14.5,15.1,63.5,7.9],["Castanha de caju",570,20,"10 unidades",18.5,29.1,46.3,3.7],["Whey protein",380,30,"1 medida",75,10,5,0],
+  ["Barra de cereal",380,25,"1 unidade",5,75,8,4],["Paçoca",480,20,"1 unidade",15,52,26,4],["Brigadeiro",400,20,"1 unidade",4,60,16,1]
+];
 /* ================= utilidades ================= */
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -637,13 +683,39 @@ function vComida(){
   });
   return h;
 }
+const semAc = t => String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+const LIQ = /^(leite|suco|refrigerante|cerveja|vinho|agua de coco|cafe)/;
+const r1 = v => Math.round(v*10)/10;
+function baseBusca(q){
+  const ws = semAc(q).split(/\s+/).filter(Boolean); if(!ws.length || semAc(q).length<2) return [];
+  const meus = new Set(S.alimentos.map(a=>semAc(a.nome)));
+  const res = [];
+  BASE_TACO.forEach((b,i)=>{ const n = semAc(b[0]); if(meus.has(n)) return; if(ws.every(w=>n.includes(w))) res.push(i); });
+  const q0 = semAc(q);
+  return res.sort((a,b)=> (semAc(BASE_TACO[b][0]).startsWith(q0)) - (semAc(BASE_TACO[a][0]).startsWith(q0)));
+}
+function baseInfo(i){
+  const b = BASE_TACO[i], f = b[2]/100, un = LIQ.test(semAc(b[0])) ? 'ml' : 'g';
+  return { nome:b[0], porcao:`${b[3]} (${b[2]} ${un})`, kcal:Math.round(b[1]*f), p:r1(b[4]*f), c:r1(b[5]*f), g:r1(b[6]*f), origem:'TACO' };
+}
+function baseSugestao(nome){
+  const q = semAc(nome); if(q.length<3) return null;
+  let i = BASE_TACO.findIndex(b=>semAc(b[0])===q);
+  if(i<0) i = BASE_TACO.findIndex(b=>semAc(b[0]).startsWith(q));
+  if(i<0){ const l = baseBusca(nome); i = l.length ? l[0] : -1; }
+  return i<0 ? null : i;
+}
 function dlgAddFood(ref, q=''){
   const usados = {}; S.diario.forEach(x=>{ if(x.alimentoId) usados[x.alimentoId] = Math.max(usados[x.alimentoId]||'', x.data); });
-  const lista = S.alimentos.filter(a=>!q || a.nome.toLowerCase().includes(q.toLowerCase())).sort((a,b)=>(usados[b.id]||'').localeCompare(usados[a.id]||'') || a.nome.localeCompare(b.nome,'pt-BR'));
+  const base = baseBusca(q).slice(0,30);
+  const baseHTML = q.trim().length<2 ? `<div class="xs mute" style="margin-top:10px">Digite o nome para buscar também em ${BASE_TACO.length} alimentos da tabela TACO, com kcal e macros já preenchidos.</div>`
+    : base.length ? `<div class="sec" style="margin-top:14px">Tabela TACO</div>${base.map(i=>{ const a = baseInfo(i); return `<div class="food" data-act="basePick" data-i="${i}" data-ref="${ref}"><div><div class="sm"><b>${esc(a.nome)}</b> <span class="mute">${esc(a.porcao)}</span></div><div class="macros">${fmt(a.kcal,0)} kcal · <b class="p">P</b> ${fmt(a.p)} · <b class="c">C</b> ${fmt(a.c)} · <b class="g">G</b> ${fmt(a.g)}</div></div><span class="mute">›</span></div>`; }).join('')}` : '';
+  const qs = semAc(q);
+  const lista = S.alimentos.filter(a=>!qs || qs.split(/\s+/).every(w=>semAc(a.nome).includes(w))).sort((a,b)=>(usados[b.id]||'').localeCompare(usados[a.id]||'') || a.nome.localeCompare(b.nome,'pt-BR'));
   openDlg(REFS[ref], `<input id="fq" placeholder="Buscar em Meus alimentos..." value="${esc(q)}" data-ref="${ref}" autocomplete="off">
-    <div style="margin-top:8px" id="flist">${lista.length? lista.slice(0,50).map(a=>`<div class="food" data-act="foodPick" data-id="${a.id}" data-ref="${ref}"><div><div class="sm"><b>${esc(a.nome)}</b> <span class="mute">${esc(a.porcao)}</span></div><div class="macros">${fmt(a.kcal,0)} kcal · <b class="p">P</b> ${fmt(a.p)} · <b class="c">C</b> ${fmt(a.c)} · <b class="g">G</b> ${fmt(a.g)}</div></div><span class="mute">›</span></div>`).join('') : `<div class="empty sm">${S.alimentos.length?'Nada encontrado.':'Você ainda não tem alimentos salvos.'}</div>`}</div>
+    <div style="margin-top:8px" id="flist">${lista.length? lista.slice(0,50).map(a=>`<div class="food" data-act="foodPick" data-id="${a.id}" data-ref="${ref}"><div><div class="sm"><b>${esc(a.nome)}</b> <span class="mute">${esc(a.porcao)}</span></div><div class="macros">${fmt(a.kcal,0)} kcal · <b class="p">P</b> ${fmt(a.p)} · <b class="c">C</b> ${fmt(a.c)} · <b class="g">G</b> ${fmt(a.g)}</div></div><span class="mute">›</span></div>`).join('') : (base.length?'':`<div class="empty sm">${S.alimentos.length||q?'Nada encontrado.':'Você ainda não tem alimentos salvos.'}</div>`)}${baseHTML}</div>
     <button class="btn pri full" style="margin-top:12px" data-act="foodNovo" data-ref="${ref}">+ Novo alimento</button>`);
-  const fq = $('#fq'); if(!q) setTimeout(()=>{},0); else { fq.focus(); fq.setSelectionRange(q.length,q.length); }
+  const fq = $('#fq'); fq.focus(); fq.setSelectionRange(q.length,q.length);
 }
 function dlgQtd(id, ref){
   const a = S.alimentos.find(x=>x.id===id); if(!a) return;
@@ -665,7 +737,8 @@ function dlgAlimento(ref, id){
   openDlg(a?'Editar alimento':'Novo alimento', `<label style="margin-top:0">Nome</label><input id="aNome" value="${a?esc(a.nome):''}" placeholder="Ovo cozido">
     <label>Porção de referência</label><input id="aPorcao" value="${a?esc(a.porcao):''}" placeholder="1 unidade, 100 g, 1 colher...">
     <div class="grid4"><div><label>kcal</label><input id="aKcal" inputmode="decimal" value="${a?fmtIn(a.kcal):''}"></div><div><label>Prot (g)</label><input id="aP" inputmode="decimal" value="${a?fmtIn(a.p):''}"></div><div><label>Carb (g)</label><input id="aC" inputmode="decimal" value="${a?fmtIn(a.c):''}"></div><div><label>Gord (g)</label><input id="aG" inputmode="decimal" value="${a?fmtIn(a.g):''}"></div></div>
-    <div class="xs mute" style="margin-top:6px">Os valores ficam na tabela nutricional da embalagem ou em tabelas como a TACO. Depois de salvo, você só escolhe o alimento e a quantidade.</div>
+    <div id="aSug"></div>
+    <div class="xs mute" style="margin-top:6px">Digite o nome e eu procuro na tabela TACO. Se não achar, os valores estão na tabela nutricional da embalagem. Depois de salvo, você só escolhe o alimento e a quantidade.</div>
     <button class="btn pri full" style="margin-top:12px" data-act="alimSave" data-ref="${ref??''}" data-id="${a?a.id:''}">${ref!==null&&ref!==undefined&&ref!==''?'Salvar e escolher quantidade':'Salvar'}</button>
     ${a?`<div style="text-align:center;margin-top:10px">${cBtn('delA'+a.id,'Excluir alimento','alimDel',`data-id="${a.id}"`)}</div>`:''}`);
 }
@@ -795,6 +868,8 @@ document.addEventListener('click', e=>{
     case 'foodHoje': ui.foodDate = hoje(); render(); break;
     case 'foodAdd': dlgAddFood(+el.dataset.ref); break;
     case 'foodPick': dlgQtd(id, +el.dataset.ref); break;
+    case 'basePick': { const a = Object.assign({id:uid()}, baseInfo(i)); S.alimentos.push(a); save(); dlgQtd(a.id, +el.dataset.ref); break; }
+    case 'aSugUse': { const a = baseInfo(i); $('#aNome').value = a.nome; $('#aPorcao').value = a.porcao; $('#aKcal').value = fmtIn(a.kcal); $('#aP').value = fmtIn(a.p); $('#aC').value = fmtIn(a.c); $('#aG').value = fmtIn(a.g); $('#aSug').innerHTML = '<div class="xs" style="margin-top:8px;color:var(--ok)">✓ Valores da TACO preenchidos. Pode ajustar se quiser.</div>'; break; }
     case 'foodNovo': dlgAlimento(+el.dataset.ref); break;
     case 'qtdStep': { const q=$('#qtd'); q.value = fmtIn(Math.max(0.25,(num(q.value)||0)+parseFloat(el.dataset.n))); qprev(); break; }
     case 'foodConfirm': {
@@ -830,6 +905,9 @@ document.addEventListener('input', e=>{
   const el = e.target;
   if(el.id==='fq'){ dlgAddFood(+el.dataset.ref, el.value); return; }
   if(el.id==='qtd'){ qprev(); return; }
+  if(el.id==='aNome'){ const s = $('#aSug'); if(!s) return; const i = baseSugestao(el.value);
+    s.innerHTML = i==null ? '' : (()=>{ const a = baseInfo(i); return `<button class="btn sm full" style="margin-top:10px;text-align:left;font-weight:400" data-act="aSugUse" data-i="${i}">✨ Usar <b>${esc(a.nome)}</b> da TACO<div class="xs mute">${esc(a.porcao)} · ${fmt(a.kcal,0)} kcal · P ${fmt(a.p)} · C ${fmt(a.c)} · G ${fmt(a.g)}</div></button>`; })();
+    return; }
   if(el.id==='rKm' || el.classList.contains('tmp')){
     if(el.id==='rS' && el.value.length>=2 && +el.value>59) el.value = '59';
     if(el.id==='rH' && el.value.length>=1 && el.value.length>=el.maxLength) $('#rM').focus();
