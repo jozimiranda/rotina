@@ -254,6 +254,11 @@ function parseTempo(str){
   if(p.length===2) return p[0]*60+p[1];
   return p[0]*3600+p[1]*60+p[2];
 }
+function tempoCampos(){
+  const g = id => { const el = document.getElementById(id); const n = parseInt((el&&el.value||'').replace(/\D/g,''),10); return isFinite(n)?n:0; };
+  const t = g('rH')*3600 + g('rM')*60 + g('rS');
+  return t>0 ? t : null;
+}
 function fmtTempo(seg){
   if(seg===null||!isFinite(seg)) return '–'; seg = Math.round(seg);
   const h = Math.floor(seg/3600), m = Math.floor(seg%3600/60), s = seg%60;
@@ -587,7 +592,15 @@ function vCorrida(){
   ui.runTipo = tipoDef;
   let h = `<div class="card"><h2>${e?'Editar corrida':'Registrar corrida'}</h2>
     <div class="grid2"><div><label>Data</label><input type="date" id="rData" value="${e?e.data:(ui.runDate||hoje())}"></div><div><label>Distância (km)</label><input id="rKm" inputmode="decimal" placeholder="5,0" value="${e?esc(String(e.km).replace('.',',')):''}"></div></div>
-    <div class="grid2"><div><label>Tempo (h:mm:ss ou mm:ss)</label><input id="rTempo" inputmode="numeric" placeholder="32:15" value="${e?fmtTempo(e.seg):''}"></div><div><label>Pace</label><div id="rPace" class="stat" style="font-size:20px;padding-top:6px">${e?pace(e.km,e.seg):'–'}</div></div></div>
+    <label>Tempo</label>
+    <div style="display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:6px;align-items:center">
+      <input id="rH" class="tmp" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="0" aria-label="Horas" value="${e&&e.seg>=3600?Math.floor(e.seg/3600):''}" style="text-align:center">
+      <span class="sm mute">h</span>
+      <input id="rM" class="tmp" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="min" aria-label="Minutos" value="${e&&e.seg?Math.floor(e.seg%3600/60):''}" style="text-align:center">
+      <span class="sm mute">min</span>
+      <input id="rS" class="tmp" inputmode="numeric" pattern="[0-9]*" maxlength="2" placeholder="seg" aria-label="Segundos" value="${e&&e.seg?Math.round(e.seg%60):''}" style="text-align:center">
+    </div>
+    <div class="row between" style="margin-top:10px"><span class="sm mute">Pace</span><span id="rPace" class="stat" style="font-size:20px">${e?pace(e.km,e.seg):'–'}</span></div>
     <label>Tipo</label><div class="chips">${TIPOS_CORRIDA.map(t=>`<button class="chip ${t===tipoDef?'on':''}" data-act="runTipo" data-t="${t}">${t}</button>`).join('')}</div>
     <label>Observações</label><textarea id="rObs" placeholder="Como foi, percurso, tênis...">${e?esc(e.obs):''}</textarea>
     <div class="row" style="margin-top:10px">${e?'<button class="btn grow" data-act="runCancel">Cancelar</button>':''}<button class="btn pri grow" data-act="runSave">${e?'Salvar alterações':'Salvar corrida'}</button></div>
@@ -770,7 +783,7 @@ document.addEventListener('click', e=>{
     case 'fDel': if(confirmTap('delF'+ui.draft.id)){ const fid=ui.draft.id; S.fichas=S.fichas.filter(f=>f.id!==fid); S.plano.forEach(p=>{ if(p.ficha===fid) p.ficha=null; }); ui.draft=null; save(); render(); } break;
     case 'runTipo': ui.runTipo = ui.runTipo===el.dataset.t ? '' : el.dataset.t; document.querySelectorAll('[data-act=runTipo]').forEach(b=>b.classList.toggle('on', b.dataset.t===ui.runTipo)); break;
     case 'runSave': {
-      const km = num($('#rKm').value), seg = parseTempo($('#rTempo').value);
+      const km = num($('#rKm').value), seg = tempoCampos();
       if(!km){ $('#rKm').focus(); return; }
       const reg = {id: ui.runEdit||uid(), data: $('#rData').value||hoje(), km, seg, tipo: ui.runTipo||'', obs: $('#rObs').value.trim()};
       S.corridas = S.corridas.filter(c=>c.id!==reg.id); S.corridas.push(reg); S.corridas.sort((x,y)=>y.data.localeCompare(x.data));
@@ -817,7 +830,10 @@ document.addEventListener('input', e=>{
   const el = e.target;
   if(el.id==='fq'){ dlgAddFood(+el.dataset.ref, el.value); return; }
   if(el.id==='qtd'){ qprev(); return; }
-  if(el.id==='rKm' || el.id==='rTempo'){ $('#rPace').textContent = pace(num($('#rKm').value), parseTempo($('#rTempo').value)); return; }
+  if(el.id==='rKm' || el.classList.contains('tmp')){
+    if(el.id==='rS' && el.value.length>=2 && +el.value>59) el.value = '59';
+    if(el.id==='rH' && el.value.length>=1 && el.value.length>=el.maxLength) $('#rM').focus();
+    $('#rPace').textContent = pace(num($('#rKm').value), tempoCampos()); return; }
   const b = el.dataset.bind; if(!b) return;
   const i = +el.dataset.i, j = +el.dataset.j, v = el.value;
   switch(b){
