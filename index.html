@@ -39,6 +39,7 @@
 .cor{width:38px;height:38px;border-radius:50%;border:3px solid transparent;cursor:pointer;padding:0}
 .cor.on{border-color:var(--ink);box-shadow:inset 0 0 0 2px var(--card)}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
 header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
 header h1{margin:0;font-size:20px;letter-spacing:-.01em}
@@ -208,9 +209,17 @@ function seed(){
     ]
   };
 }
+function seedVazio(){
+  const s = seed();
+  s.titulo = 'Meus treinos'; s.fichas = [];
+  s.plano = Array.from({length:7}, ()=>({ficha:null, corrida:'', nota:''}));
+  return s;
+}
 function load(){ try{ const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; }catch(e){ return null; } }
-let S = load() || seed();
-const PERFIL_PADRAO = () => ({nome:'Jozi', frase:'Maratona 2027 💪', foto:null, cor:'verde', tema:'auto', provaNome:'Maratona', provaData:''});
+const salvoAntes = load();
+let S = salvoAntes || seedVazio();
+let novaInstalacao = !salvoAntes;   // primeira vez neste aparelho: mostra boas-vindas
+const PERFIL_PADRAO = () => ({nome:'', frase:'', foto:null, cor:'verde', tema:'auto', provaNome:'', provaData:''});
 function migrar(){
   S.perfil = Object.assign(PERFIL_PADRAO(), S.perfil||{});
   S.agua = S.agua || {}; S.doce = S.doce || {};
@@ -234,7 +243,7 @@ if(mq && mq.addEventListener) mq.addEventListener('change', aplicarTema);
 aplicarTema();
 let saveErr = false;
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); saveErr=false; }catch(e){ saveErr=true; } }
-save();
+if(!novaInstalacao) save();
 try{ navigator.storage && navigator.storage.persist && navigator.storage.persist(); }catch(e){}
 
 /* Base de alimentos: [nome, kcal/100g, porção típica (g/ml), descrição da porção, prot, carb, gord, fibra por 100 g].
@@ -340,6 +349,8 @@ const cBtn = (key, label, act, extra='') => `<button class="btn sm bad" data-act
 /* ================= render ================= */
 function render(){
   document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.tab===ui.tab));
+  if(novaInstalacao){ $('#nav').hidden = true; $('#sub').textContent = 'Boas-vindas'; $('#avatar').innerHTML = '🙂'; $('#view').innerHTML = vBoasVindas(); return; }
+  $('#nav').hidden = false;
   const views = {hoje:vHoje, semana:vSemana, treino:vTreino, corrida:vCorrida, comida:vComida, corpo:vCorpo, config:vConfig};
   const subs = {hoje:dataLonga(hoje()), semana:'Calendário de treinos', treino:'Musculação', corrida:'Corridas', comida:'Alimentação', corpo:'Peso e medidas', config:'Perfil e configurações'};
   $('#sub').textContent = subs[ui.tab];
@@ -354,7 +365,39 @@ function totaisDia(d){
   return t;
 }
 function corpoOrdenado(){ return [...S.corpo].sort((a,b)=>a.data.localeCompare(b.data)); }
-const avatarHTML = () => S.perfil.foto ? `<img src="${esc(S.perfil.foto)}" alt="">` : esc((S.perfil.nome||'?').trim().charAt(0).toUpperCase()||'🙂');
+const avatarHTML = () => S.perfil.foto ? `<img src="${esc(S.perfil.foto)}" alt="">` : ((S.perfil.nome||'').trim() ? esc(S.perfil.nome.trim().charAt(0).toUpperCase()) : '🙂');
+function vBoasVindas(){
+  return `<div class="card hero" style="text-align:center;padding:24px 16px"><div style="font-size:40px">👋</div><div style="font-size:22px;font-weight:700;margin-top:6px">Boas-vindas ao Rotina!</div><div class="sm mute" style="margin-top:4px">Treinos, corridas, alimentação, água e medidas num lugar só.</div></div>
+    <div class="card"><label style="margin-top:0">Como você quer ser chamado(a)?</label><input id="bvNome" placeholder="Seu nome" autocomplete="given-name"></div>
+    <div class="sec">Como quer começar?</div>
+    <div class="card" data-act="comecar" data-modo="zero" style="cursor:pointer"><div class="row" style="flex-wrap:nowrap;gap:12px"><span style="font-size:28px">✏️</span><div class="grow"><b>Começar do zero</b><div class="sm mute">Você cadastra suas próprias fichas de treino e o seu plano da semana.</div></div><span class="mute">›</span></div></div>
+    <div class="card" data-act="comecar" data-modo="modelo" style="cursor:pointer"><div class="row" style="flex-wrap:nowrap;gap:12px"><span style="font-size:28px">🏃</span><div class="grow"><b>Usar um modelo de exemplo</b><div class="sm mute">Fichas A, B e C de preparação para maratona, com plano semanal de corrida. Dá para editar tudo depois.</div></div><span class="mute">›</span></div></div>
+    <div class="card"><div class="row" style="flex-wrap:nowrap;gap:12px"><span style="font-size:28px">💾</span><div class="grow"><b>Já usa o Rotina?</b><div class="sm mute">Trocou de celular? Restaure o arquivo de backup.</div></div><label class="btn sm" style="margin:0;color:var(--ink)">Restaurar<input type="file" accept=".json,application/json" id="imp" hidden></label></div></div>
+    <div class="xs mute" style="text-align:center;margin:12px 0">Seus dados ficam só neste aparelho. Ninguém mais vê.</div>`;
+}
+function comecar(modo){
+  const nome = ($('#bvNome') && $('#bvNome').value.trim()) || '';
+  S = modo==='modelo' ? seed() : seedVazio(); migrar();
+  S.perfil.nome = nome;
+  if(modo==='modelo'){ S.perfil.frase = 'Rumo à maratona 💪'; S.perfil.provaNome = 'Maratona'; }
+  novaInstalacao = false; save(); aplicarTema();
+  ui.tab = 'hoje'; render(); window.scrollTo(0,0);
+}
+function primeirosPassos(){
+  if(S.guiaOk) return '';
+  const passos = [
+    [S.fichas.some(f=>f.ativa), 'Crie sua ficha de treino', 'novaFichaAtalho', ''],
+    [S.plano.some(p=>p.ficha||p.corrida), 'Monte o plano da semana', 'tab', 'config'],
+    [S.corpo.length>0, 'Cadastre peso e medidas iniciais', 'tab', 'corpo'],
+    [!!num(S.metas.kcal), 'Defina suas metas de alimentação', 'tab', 'config'],
+    [!!S.perfil.foto, 'Coloque sua foto de perfil', 'tab', 'config'],
+  ];
+  if(passos.every(p=>p[0])) return '';
+  const feitos = passos.filter(p=>p[0]).length;
+  return `<div class="card"><div class="row between"><h2 style="margin:0">Primeiros passos</h2><span class="sm mute">${feitos}/${passos.length}</span></div>
+    <div class="list" style="margin-top:6px">${passos.map(([ok,txt,act,tab])=>`<div class="row between" ${ok?'':`data-act="${act}" ${tab?`data-tab="${tab}"`:''} style="cursor:pointer"`}><span class="sm" style="${ok?'text-decoration:line-through;opacity:.6':''}">${ok?'✅':'⬜'} ${txt}</span>${ok?'':'<span class="mute">›</span>'}</div>`).join('')}</div>
+    <button class="btn ghost sm" style="margin-top:6px" data-act="guiaOk">Esconder</button></div>`;
+}
 function saudacao(){ const h = new Date().getHours(); return h<12?'Bom dia':h<18?'Boa tarde':'Boa noite'; }
 function contagem(){
   const p = S.perfil; if(!p.provaData) return '';
@@ -371,12 +414,14 @@ function vHoje(){
   const treinoFeito = S.sessoes.some(s=>s.data===d);
   const corridaFeita = S.corridas.some(c=>c.data===d);
   const P = S.perfil;
-  let h = `<div class="card hero"><div class="row" style="flex-wrap:nowrap;gap:12px"><button class="avatar big" style="border-color:var(--acc-ink)" data-act="tab" data-tab="config" aria-label="Perfil">${avatarHTML()}</button><div class="grow"><div style="font-size:20px;font-weight:700">${saudacao()}${P.nome?', '+esc(P.nome):''}!</div>${P.frase?`<div class="sm mute">${esc(P.frase)}</div>`:''}</div></div>${contagem()}${!P.provaData?`<button class="btn sm" style="margin-top:10px;background:transparent;color:inherit;border-color:currentColor" data-act="tab" data-tab="config">📅 Definir a data da maratona</button>`:''}</div>`;
+  let h = `<div class="card hero"><div class="row" style="flex-wrap:nowrap;gap:12px"><button class="avatar big" style="border-color:var(--acc-ink)" data-act="tab" data-tab="config" aria-label="Perfil">${avatarHTML()}</button><div class="grow"><div style="font-size:20px;font-weight:700">${saudacao()}${P.nome?', '+esc(P.nome):''}!</div>${P.frase?`<div class="sm mute">${esc(P.frase)}</div>`:''}</div></div>${contagem()}${!P.provaData?`<button class="btn sm" style="margin-top:10px;background:transparent;color:inherit;border-color:currentColor" data-act="tab" data-tab="config">📅 Definir a data da ${esc(P.provaNome||'prova')}</button>`:''}</div>`;
+  h += primeirosPassos();
   if(S.ativa) h += `<div class="card banner"><div class="row between"><div><b>Treino em andamento</b><div class="sm mute">${esc(S.ativa.fichaNome)}</div></div><button class="btn pri" data-act="tab" data-tab="treino">Continuar</button></div></div>`;
   h += `<div class="card"><h2>Plano de hoje · ${DIAS[dow]}</h2>`;
   if(f) h += `<div class="row between" style="margin-top:6px"><div class="row"><span class="badge">${esc(f.letra)}</span><div><b>${esc(f.nome)}</b><div class="xs mute">${f.exercicios.length} exercícios</div></div></div>${treinoFeito?'<span class="done">✓ feito</span>':(S.ativa?'':`<button class="btn pri sm" data-act="iniciar" data-id="${f.id}">Iniciar</button>`)}</div>`;
   if(pl.corrida) h += `<div class="row between" style="margin-top:10px"><div class="row"><span class="badge">🏃</span><b>${esc(pl.corrida)}</b></div>${corridaFeita?'<span class="done">✓ feito</span>':`<button class="btn sm" data-act="tab" data-tab="corrida">Registrar</button>`}</div>`;
-  if(!f && !pl.corrida) h += `<div class="mute">${esc(pl.nota||'Descanso')} 😌</div>`;
+  const semPlano = S.plano.every(p=>!p.ficha && !p.corrida && !p.nota);
+  if(!f && !pl.corrida) h += semPlano ? `<div class="sm mute">Você ainda não montou seu plano da semana.</div><button class="btn sm" style="margin-top:8px" data-act="tab" data-tab="config">Montar plano</button>` : `<div class="mute">${esc(pl.nota||'Descanso')} 😌</div>`;
   else if(pl.nota) h += `<div class="xs mute" style="margin-top:8px">${esc(pl.nota)}</div>`;
   h += `</div>`;
   h += habitos(d);
@@ -522,6 +567,7 @@ function vTreino(){
   let h = '';
   const ativas = S.fichas.filter(f=>f.ativa), arq = S.fichas.filter(f=>!f.ativa);
   h += `<div class="sec">${esc(S.titulo||'Fichas')}</div>`;
+  if(!ativas.length) h += `<div class="card" style="text-align:center"><div style="font-size:34px">🏋️</div><b>Nenhuma ficha ainda</b><div class="sm mute" style="margin:4px 0 12px">Cadastre seus treinos (A, B, C...) com os exercícios, séries e repetições.</div><button class="btn pri" data-act="novaFicha">+ Criar minha primeira ficha</button></div>`;
   ativas.forEach(f=>{
     const ult = S.sessoes.find(s=>s.fichaId===f.id);
     h += `<div class="card"><div class="row between"><div class="row grow" style="flex-wrap:nowrap"><span class="badge">${esc(f.letra)}</span><div class="grow"><h3>${esc(f.nome)}</h3><div class="xs mute">${f.exercicios.length} exercícios${ult?' · último: '+dataCurta(ult.data):''}</div></div></div></div>
@@ -858,7 +904,7 @@ function vConfig(){
   h += `<div class="card"><h2>Meus alimentos (${S.alimentos.length})</h2>${S.alimentos.length?`<div>${[...S.alimentos].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')).map(a=>`<div class="food" data-act="alimEdit" data-id="${a.id}"><div><div class="sm"><b>${esc(a.nome)}</b> <span class="mute">${esc(a.porcao)}</span></div><div class="macros">${fmt(a.kcal,0)} kcal · P ${fmt(a.p)} · C ${fmt(a.c)} · G ${fmt(a.g)}</div></div><span class="mute">›</span></div>`).join('')}</div>`:'<div class="sm mute">Os alimentos que você cadastrar na aba Comida aparecem aqui.</div>'}<button class="btn sm" style="margin-top:8px" data-act="alimNovo">+ Novo alimento</button></div>`;
   h += `<div class="card"><h2>Backup</h2><div class="sm mute">Os dados ficam guardados só neste aparelho. Faça backup de vez em quando e guarde o arquivo no Drive ou no WhatsApp. ${S.ultimoBackup?'Último: '+new Date(S.ultimoBackup).toLocaleDateString('pt-BR')+'.':''}</div>
     <div class="row" style="margin-top:10px"><button class="btn pri grow" data-act="exportar">Exportar backup</button><label class="btn grow" style="margin:0;text-align:center;color:var(--ink);font-size:15px">Importar<input type="file" accept=".json,application/json" id="imp" hidden></label></div></div>`;
-  h += `<div class="card"><h2>Zona de perigo</h2><div class="sm mute">Apaga todos os registros deste aparelho e volta para a ficha inicial.</div><div style="margin-top:8px">${cBtn('reset','Apagar tudo','reset')}</div></div>`;
+  h += `<div class="card"><h2>Zona de perigo</h2><div class="sm mute">Apaga todos os registros deste aparelho e volta para a tela de boas-vindas. Faça um backup antes.</div><div style="margin-top:8px">${cBtn('reset','Apagar tudo','reset')}</div></div>`;
   h += `<div class="xs mute" style="text-align:center;margin:10px 0">Rotina · feito pela Lua 🌙</div>`;
   return h;
 }
@@ -882,7 +928,7 @@ async function exportar(){
 }
 function importar(file){
   const r = new FileReader();
-  r.onload = () => { try{ const d = JSON.parse(r.result); if(!d || !Array.isArray(d.fichas)) throw 0; S = d; migrar(); aplicarTema(); save(); ui.tab='hoje'; render(); openDlg('Backup importado','<div class="sm">Seus dados foram restaurados. ✓</div>'); }catch(e){ openDlg('Ops','<div class="sm">Esse arquivo não parece um backup da Rotina.</div>'); } };
+  r.onload = () => { try{ const d = JSON.parse(r.result); if(!d || !Array.isArray(d.fichas)) throw 0; S = d; migrar(); aplicarTema(); novaInstalacao = false; save(); ui.tab='hoje'; render(); openDlg('Backup importado','<div class="sm">Seus dados foram restaurados. ✓</div>'); }catch(e){ openDlg('Ops','<div class="sm">Esse arquivo não parece um backup da Rotina.</div>'); } };
   r.readAsText(file);
 }
 
@@ -976,7 +1022,10 @@ document.addEventListener('click', e=>{
     case 'corpoCancel': ui.corpoEdit=null; render(); break;
     case 'corpoDel': if(confirmTap('delC'+ui.corpoEdit)){ S.corpo=S.corpo.filter(c=>c.id!==ui.corpoEdit); ui.corpoEdit=null; save(); render(); } break;
     case 'exportar': exportar(); break;
-    case 'reset': if(confirmTap('reset')){ S = seed(); migrar(); aplicarTema(); save(); ui.tab='hoje'; render(); } break;
+    case 'reset': if(confirmTap('reset')){ try{ localStorage.removeItem(KEY); }catch(e){} S = seedVazio(); migrar(); aplicarTema(); novaInstalacao = true; ui.tab='hoje'; render(); } break;
+    case 'comecar': comecar(el.dataset.modo); break;
+    case 'guiaOk': S.guiaOk = true; save(); render(); break;
+    case 'novaFichaAtalho': ui.tab = 'treino'; editFicha(null); break;
   }
 });
 document.addEventListener('input', e=>{
